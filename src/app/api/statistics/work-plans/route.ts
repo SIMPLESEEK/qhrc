@@ -6,7 +6,7 @@ import { zhCN } from 'date-fns/locale';
 
 const SHARED_CALENDAR_ID = 'shared-calendar';
 
-// 获取工作计划数据用于统计
+// 获取工作计划数据用于统计 - 团队共享功能，返回所有用户的工作计划
 export async function GET(request: NextRequest) {
   try {
     // 获取当前用户
@@ -16,6 +16,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { message: '未授权' },
         { status: 401 }
+      );
+    }
+
+    // 检查权限：只有管理员和超级管理员可以查看统计
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      return NextResponse.json(
+        { message: '只有管理员可以查看工作计划统计' },
+        { status: 403 }
       );
     }
 
@@ -32,10 +40,13 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createSupabaseServerClientWithCookies();
 
-    // 从work_plans表获取工作计划数据
+    // 从work_plans表获取所有工作计划数据 - 不按用户过滤，实现团队共享
     const { data: workPlansData, error } = await supabase
       .from('work_plans')
-      .select('*')
+      .select(`
+        *,
+        creator:users!work_plans_created_by_fkey(name, email)
+      `)
       .gte('created_at', startDate)
       .lte('created_at', endDate + 'T23:59:59.999Z')
       .order('created_at', { ascending: false });
@@ -101,9 +112,18 @@ export async function GET(request: NextRequest) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
+    // 添加调试信息
+    console.log(`[工作计划统计] 用户 ${user.email} 查询统计数据，返回 ${allWorkPlans.length} 条记录`);
+
     return NextResponse.json({
       workPlans: allWorkPlans,
-      total: allWorkPlans.length
+      total: allWorkPlans.length,
+      debug: {
+        requestUser: user.email,
+        dateRange: `${startDate} 到 ${endDate}`,
+        rawDataCount: workPlansData?.length || 0,
+        processedCount: allWorkPlans.length
+      }
     });
 
   } catch (error) {

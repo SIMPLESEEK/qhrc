@@ -77,7 +77,7 @@ const WorkPlanSection: React.FC<WorkPlanSectionProps> = ({
 
   const uiText = getUIText();
 
-  // 获取工作计划列表
+  // 获取工作计划列表 - 团队共享功能
   const fetchWorkPlans = useCallback(async () => {
     try {
       setLoading(true);
@@ -90,18 +90,30 @@ const WorkPlanSection: React.FC<WorkPlanSectionProps> = ({
         params.append('weekStart', currentWeekStart.toISOString());
       }
 
-      const response = await fetch(`/api/work-plans?${params.toString()}`);
+      // 添加时间戳防止缓存
+      params.append('_t', Date.now().toString());
+
+      const response = await fetch(`/api/work-plans?${params.toString()}`, {
+        cache: 'no-store', // 禁用缓存
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
       const data = await response.json();
 
       if (data.success) {
         setWorkPlans(data.workPlans);
+        // 调试信息
+        console.log(`[工作计划] ${title} 获取到 ${data.workPlans.length} 条记录`, data.debug);
+      } else {
+        console.error('获取工作计划失败:', data.message);
       }
     } catch (error) {
       console.error('获取工作计划失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [type, currentWeekStart]);
+  }, [type, currentWeekStart, title]);
 
   useEffect(() => {
     fetchWorkPlans();
@@ -262,6 +274,24 @@ const WorkPlanSection: React.FC<WorkPlanSectionProps> = ({
                   <div className="flex items-center space-x-2 mb-2">
                     {getStatusIcon(plan.status)}
                     <h4 className="font-medium text-gray-900">{plan.title}</h4>
+                  </div>
+                  {plan.description && (
+                    <p className="text-sm text-gray-600 mb-2">{plan.description}</p>
+                  )}
+                  {/* 显示创建者信息，证明这是团队共享的 */}
+                  <div className="flex items-center space-x-4 text-xs text-gray-500">
+                    <span>创建者: {(plan as any).creator?.name || '未知'}</span>
+                    <span>创建时间: {new Date(plan.createdAt).toLocaleDateString('zh-CN')}</span>
+                    {plan.priority && (
+                      <span className={`px-2 py-1 rounded ${
+                        plan.priority === 'high' ? 'bg-red-100 text-red-800' :
+                        plan.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {plan.priority === 'high' ? '高优先级' :
+                         plan.priority === 'medium' ? '中优先级' : '低优先级'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">

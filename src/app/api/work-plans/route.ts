@@ -4,7 +4,7 @@ import { createSupabaseServerClientWithCookies } from '@/lib/supabase-server';
 import { WorkPlanType, UserRole } from '@/types';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
-// 获取工作计划列表
+// 获取工作计划列表 - 团队共享功能，所有管理员都能看到所有工作计划
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser();
@@ -16,15 +16,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // 检查权限：只有管理员和超级管理员可以查看工作计划
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      return NextResponse.json(
+        { message: '只有管理员可以查看工作计划' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') as WorkPlanType;
     const weekStartParam = searchParams.get('weekStart');
 
     const supabase = await createSupabaseServerClientWithCookies();
 
+    // 获取所有工作计划 - 不按用户过滤，实现团队共享
     let query = supabase
       .from('work_plans')
-      .select('*')
+      .select(`
+        *,
+        creator:users!work_plans_created_by_fkey(name, email),
+        assignee:users!work_plans_assigned_to_fkey(name, email)
+      `)
       .order('created_at', { ascending: false });
 
     if (type) {
@@ -52,9 +65,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // 添加调试信息，确保返回所有数据
+    console.log(`[工作计划] 用户 ${user.email} 查询工作计划，返回 ${data?.length || 0} 条记录`);
+
     return NextResponse.json({
       success: true,
-      workPlans: data || []
+      workPlans: data || [],
+      debug: {
+        requestUser: user.email,
+        totalCount: data?.length || 0,
+        type: type || 'all',
+        weekStart: weekStartParam || 'none'
+      }
     });
 
   } catch (error) {
