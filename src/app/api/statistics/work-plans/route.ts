@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createSupabaseServerClientWithCookies } from '@/lib/supabase-server';
+import { UserRole } from '@/types';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
