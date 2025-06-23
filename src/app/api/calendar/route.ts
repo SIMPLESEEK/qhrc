@@ -21,7 +21,7 @@ export async function GET() {
 
     // 尝试从缓存获取数据
     const cacheKey = CacheKeys.calendarEvents(SHARED_CALENDAR_ID);
-    let cachedEvents = cache.get(cacheKey);
+    const cachedEvents = cache.get(cacheKey);
 
     if (cachedEvents) {
       return NextResponse.json(cachedEvents, { status: 200 });
