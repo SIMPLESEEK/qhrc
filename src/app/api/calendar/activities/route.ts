@@ -29,7 +29,10 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createSupabaseServerClientWithCookies();
-    const dateStr = format(new Date(date), 'yyyy-MM-dd');
+    // 如果date已经是yyyy-MM-dd格式的字符串，直接使用；否则格式化
+    const dateStr = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : format(new Date(date), 'yyyy-MM-dd');
 
     // 获取共享日历数据
     const { data: calendarData, error: fetchError } = await supabase
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
     const existingActivities = existingDayData?.activities || [];
 
     events[dateStr] = {
-      date: new Date(date),
+      date: new Date(dateStr + 'T00:00:00'), // 使用本地日期，避免时区偏移
       activities: [...existingActivities, newActivity]
     };
 
@@ -134,7 +137,10 @@ export async function DELETE(request: Request) {
     }
 
     const supabase = await createSupabaseServerClientWithCookies();
-    const dateStr = format(new Date(date), 'yyyy-MM-dd');
+    // 如果date已经是yyyy-MM-dd格式的字符串，直接使用；否则格式化
+    const dateStr = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : format(new Date(date), 'yyyy-MM-dd');
 
     // 获取共享日历数据
     const { data: calendarData, error: fetchError } = await supabase

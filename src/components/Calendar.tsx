@@ -163,7 +163,7 @@ export default function Calendar({ userId, initialEvents, userRole }: CalendarPr
 
     try {
       const response = await axios.post('/api/calendar/activities', {
-        date: date.toISOString(),
+        date: dateStr, // 直接发送格式化的日期字符串，避免时区问题
         activity: {
           description: activity.description || '',
           type: activity.type || ActivityType.QHRC_CENTER
@@ -213,7 +213,7 @@ export default function Calendar({ userId, initialEvents, userRole }: CalendarPr
     try {
       await axios.delete('/api/calendar/activities', {
         data: {
-          date: date.toISOString(),
+          date: dateStr, // 直接发送格式化的日期字符串，避免时区问题
           activityId
         }
       });
