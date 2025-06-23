@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { OperationType } from '@/types';
 import { logOperation } from '@/lib/operations';
 import { SHARED_CALENDAR_ID } from '@/lib/constants';
+import { cache, CacheKeys } from '@/lib/cache';
 
 // 获取共享日历数据
 export async function GET() {
@@ -18,19 +19,29 @@ export async function GET() {
       );
     }
 
+    // 尝试从缓存获取数据
+    const cacheKey = CacheKeys.calendarEvents(SHARED_CALENDAR_ID);
+    let cachedEvents = cache.get(cacheKey);
+
+    if (cachedEvents) {
+      return NextResponse.json(cachedEvents, { status: 200 });
+    }
+
     const supabase = await createSupabaseServerClientWithCookies();
 
     // 获取共享日历数据
     const { data, error } = await supabase
       .from('calendar_events')
-      .select('*')
+      .select('events')
       .eq('user_id', SHARED_CALENDAR_ID)
       .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
         // 没有找到记录，返回空对象
-        return NextResponse.json({}, { status: 200 });
+        const emptyEvents = {};
+        cache.set(cacheKey, emptyEvents, 2 * 60 * 1000);
+        return NextResponse.json(emptyEvents, { status: 200 });
       }
 
       console.error('获取共享日历数据失败:', error);
@@ -40,7 +51,11 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json(data?.events || {}, { status: 200 });
+    const events = data?.events || {};
+    // 缓存数据
+    cache.set(cacheKey, events, 2 * 60 * 1000);
+
+    return NextResponse.json(events, { status: 200 });
   } catch (error) {
     console.error('获取共享日历数据时出错:', error);
     return NextResponse.json(
@@ -110,8 +125,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 记录操作（记录是哪个用户进行的操作）
-    await logOperation(
+    // 清除缓存，确保数据一致性
+    const cacheKey = CacheKeys.calendarEvents(SHARED_CALENDAR_ID);
+    cache.delete(cacheKey);
+
+    // 异步记录操作日志，不阻塞响应
+    logOperation(
       user.id,
       user.email || user.username || 'unknown',
       OperationType.UPDATE_EVENT,

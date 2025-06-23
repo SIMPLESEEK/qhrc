@@ -1,29 +1,33 @@
 import { createSupabaseServerClientWithCookies } from './supabase-server';
 import { OperationType, OperationLog } from '@/types';
 
-// 记录用户操作
+// 记录用户操作 - 异步非阻塞版本
 export async function logOperation(
   userId: string,
   userEmailOrUsername: string,
   operationType: OperationType,
   details: string
 ): Promise<void> {
-  try {
-    const supabase = await createSupabaseServerClientWithCookies();
+  // 使用 setTimeout 让日志记录异步执行，不阻塞主要操作
+  setTimeout(async () => {
+    try {
+      const supabase = await createSupabaseServerClientWithCookies();
 
-    await supabase
-      .from('operation_logs')
-      .insert([
-        {
-          user_id: userId,
-          user_email: userEmailOrUsername, // 兼容现有数据库结构
-          operation_type: operationType,
-          details,
-        },
-      ]);
-  } catch (error) {
-    // 记录操作失败，静默处理
-  }
+      await supabase
+        .from('operation_logs')
+        .insert([
+          {
+            user_id: userId,
+            user_email: userEmailOrUsername, // 兼容现有数据库结构
+            operation_type: operationType,
+            details,
+          },
+        ]);
+    } catch (error) {
+      // 记录操作失败，静默处理
+      console.warn('操作日志记录失败:', error);
+    }
+  }, 0);
 }
 
 // 获取操作记录（仅管理员可用）

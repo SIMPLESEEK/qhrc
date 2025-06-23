@@ -5,6 +5,7 @@ import { OperationType, ActivityType, UserRole } from '@/types';
 import { createSupabaseServerClientWithCookies } from '@/lib/supabase-server';
 import { SHARED_CALENDAR_ID } from '@/lib/constants';
 import { format } from 'date-fns';
+import { cache, CacheKeys } from '@/lib/cache';
 
 // 添加活动
 export async function POST(request: Request) {
@@ -34,24 +35,32 @@ export async function POST(request: Request) {
       ? date
       : format(new Date(date), 'yyyy-MM-dd');
 
-    // 获取共享日历数据
-    const { data: calendarData, error: fetchError } = await supabase
-      .from('calendar_events')
-      .select('*')
-      .eq('user_id', SHARED_CALENDAR_ID)
-      .single();
-
-    let events: Record<string, { date: Date; activities: Array<{ id: string; description: string; type: string }> }> = {};
-    if (calendarData && !fetchError) {
-      events = calendarData.events || {};
-    }
-
     // 创建新活动
     const newActivity = {
       id: crypto.randomUUID(),
       description: activity.description,
       type: activity.type || ActivityType.QHRC_CENTER
     };
+
+    // 尝试从缓存获取数据
+    const cacheKey = CacheKeys.calendarEvents(SHARED_CALENDAR_ID);
+    let events: Record<string, { date: Date; activities: Array<{ id: string; description: string; type: string }> }> =
+      cache.get(cacheKey) || {};
+
+    // 如果缓存为空，从数据库获取
+    if (Object.keys(events).length === 0) {
+      const { data: calendarData, error: fetchError } = await supabase
+        .from('calendar_events')
+        .select('events')
+        .eq('user_id', SHARED_CALENDAR_ID)
+        .single();
+
+      if (calendarData && !fetchError) {
+        events = calendarData.events || {};
+        // 缓存数据，TTL 2分钟
+        cache.set(cacheKey, events, 2 * 60 * 1000);
+      }
+    }
 
     // 更新事件数据
     const existingDayData = events[dateStr];
@@ -62,7 +71,7 @@ export async function POST(request: Request) {
       activities: [...existingActivities, newActivity]
     };
 
-    // 保存到共享日历
+    // 保存到共享日历 - 只更新 events 字段
     const { error: saveError } = await supabase
       .from('calendar_events')
       .upsert(
@@ -81,8 +90,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 记录详细操作
-    await logOperation(
+    // 更新缓存
+    cache.set(cacheKey, events, 2 * 60 * 1000);
+
+    // 异步记录操作日志，不阻塞响应
+    logOperation(
       user.id,
       user.username,
       OperationType.CREATE_EVENT,
@@ -142,21 +154,29 @@ export async function DELETE(request: Request) {
       ? date
       : format(new Date(date), 'yyyy-MM-dd');
 
-    // 获取共享日历数据
-    const { data: calendarData, error: fetchError } = await supabase
-      .from('calendar_events')
-      .select('*')
-      .eq('user_id', SHARED_CALENDAR_ID)
-      .single();
+    // 尝试从缓存获取数据
+    const cacheKey = CacheKeys.calendarEvents(SHARED_CALENDAR_ID);
+    let events: Record<string, any> = cache.get(cacheKey) || {};
 
-    if (fetchError || !calendarData) {
-      return NextResponse.json(
-        { message: '未找到日历数据' },
-        { status: 404 }
-      );
+    // 如果缓存为空，从数据库获取
+    if (Object.keys(events).length === 0) {
+      const { data: calendarData, error: fetchError } = await supabase
+        .from('calendar_events')
+        .select('events')
+        .eq('user_id', SHARED_CALENDAR_ID)
+        .single();
+
+      if (fetchError || !calendarData) {
+        return NextResponse.json(
+          { message: '未找到日历数据' },
+          { status: 404 }
+        );
+      }
+
+      events = calendarData.events || {};
+      // 缓存数据
+      cache.set(cacheKey, events, 2 * 60 * 1000);
     }
-
-    const events = calendarData.events || {};
     const dayData = events[dateStr];
 
     if (!dayData || !dayData.activities) {
@@ -207,8 +227,11 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // 记录详细操作
-    await logOperation(
+    // 更新缓存
+    cache.set(cacheKey, events, 2 * 60 * 1000);
+
+    // 异步记录操作日志，不阻塞响应
+    logOperation(
       user.id,
       user.username,
       OperationType.DELETE_EVENT,
